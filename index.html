@@ -84,7 +84,7 @@ const sb = window.supabase.createClient('https://ztstiaxffvrxwkucpwmz.supabase.c
  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0c3RpYXhmZnZyeHdrdWNwd216Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzNTUxNzMsImV4cCI6MjEwMTkzMTE3M30._92THYsNcAy5Cy46cKWR8EVUq0K2rgoGG8frhUePAeI');
 
 const S = { user:null, profile:null, events:[], unlisted:[], contests:[], regions:[],
-            tab:'overview', fy:'', q:'', region:'', listed:[], dateFrom:'', dateTo:'', search:'', modal:null, msg:'' };
+            tab:'overview', fy:'', q:'', region:'', listed:[], dateFrom:'', dateTo:'', search:'', status:'', modal:null, msg:'' };
 const $ = (id)=>document.getElementById(id);
 const esc = (s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = (n)=>Number(n).toLocaleString('en-GB');
@@ -102,7 +102,7 @@ async function loadData(){
   S.regions = await fetchAll('regions','*',{col:'code',asc:true});
   S.events  = await fetchAll('expected_events','*',{col:'event_date',asc:true});
   S.unlisted= await fetchAll('unlisted_events','*',{col:'event_date',asc:true});
-  S.contests= await fetchAll('contests','*, expected_events(event_name,event_date,region_code)',{col:'created_at',asc:false});
+  S.contests= await fetchAll('contests','*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,postcode)',{col:'created_at',asc:false});
 }
 
 const regionLabel = (c)=>{ const r=S.regions.find(r=>r.code===c); return r? r.label : c; };
@@ -111,10 +111,17 @@ const contestRemoves = (c)=>c && c.status==='accepted' && ['cancelled','duplicat
 
 function fyOf(d){const t=new Date(d);const y=t.getFullYear()-(t.getMonth()<3?1:0);return y+'-'+String((y+1)%100).padStart(2,'0');}
 function qOf(d){const m=new Date(d).getMonth();return 'Q'+(Math.floor(((m+9)%12)/3)+1);}
-function inScope(e){
-  return e.status==='expected' && !e.excluded
-    && (!S.fy || e.fy===S.fy) && (!S.q || e.fy_quarter===S.q) && (!S.region || e.region_code===S.region);
+function srcMatch(e){
+  return !S.listed.length || S.listed.some(s=>({website:e.in_website,goodform:e.in_goodform,swimbooker:e.in_swimbooker})[s]);
 }
+function baseScope(e){
+  return e.status==='expected' && !e.excluded
+    && (!S.fy || e.fy===S.fy) && (!S.q || e.fy_quarter===S.q)
+    && (!S.dateFrom || e.event_date>=S.dateFrom) && (!S.dateTo || e.event_date<=S.dateTo)
+    && srcMatch(e)
+    && (!S.search || (e.event_name+' '+(e.postcode||'')).toLowerCase().includes(S.search.toLowerCase()));
+}
+function inScope(e){ return baseScope(e) && (!S.region || e.region_code===S.region); }
 function kpi(){
   const evs = S.events.filter(e=>inScope(e) && !contestRemoves(contestFor(e.id)));
   const rec = evs.filter(e=>e.records_received>0);
@@ -123,8 +130,7 @@ function kpi(){
 }
 function kpiByRegion(){
   return S.regions.map(r=>{
-    const evs=S.events.filter(e=>e.region_code===r.code && e.status==='expected' && !e.excluded
-      && (!S.fy||e.fy===S.fy) && (!S.q||e.fy_quarter===S.q) && !contestRemoves(contestFor(e.id)));
+    const evs=S.events.filter(e=>e.region_code===r.code && baseScope(e) && !contestRemoves(contestFor(e.id)));
     const rec=evs.filter(e=>e.records_received>0).length;
     return {code:r.code,label:r.label,rado:r.rado_name,expected:evs.length,received:rec,missing:evs.length-rec,
             pct:evs.length?Math.round(1000*(evs.length-rec)/evs.length)/10:0};
@@ -168,15 +174,18 @@ function filtersRow(){
     <select id="f-fy"><option value="">All years</option>${fys.map(f=>`<option ${S.fy===f?'selected':''}>${f}</option>`).join('')}</select>
     <select id="f-q"><option value="">All quarters</option>${['Q1','Q2','Q3','Q4'].map(q=>`<option ${S.q===q?'selected':''}>${q}</option>`).join('')}</select>
     <select id="f-r"><option value="">All regions</option>${regs.map(r=>`<option value="${r.code}" ${S.region===r.code?'selected':''}>${esc(r.label)}</option>`).join('')}</select>
-    ${['chase','all'].includes(S.tab)?`<span class="chk-group" title="Tick any combination; none ticked shows all sources">
+    ${(()=>{const dis=S.tab==='unlisted';
+      return `<span class="chk-group" style="${dis?'opacity:.45':''}" title="${dis?'Not applicable here: unlisted events appear in no source list':'Tick any combination; none ticked shows all sources'}">
       <span style="font-size:12px;color:var(--ink2)">Listed in:</span>
-      <label class="chk"><input type="checkbox" data-src="website" ${S.listed.includes('website')?'checked':''}>Website</label>
-      <label class="chk"><input type="checkbox" data-src="goodform" ${S.listed.includes('goodform')?'checked':''}>Goodform</label>
-      <label class="chk"><input type="checkbox" data-src="swimbooker" ${S.listed.includes('swimbooker')?'checked':''}>Swimbooker</label>
-    </span>`:''}
-    ${['chase','all','unlisted'].includes(S.tab)?`<span style="font-size:12px;color:var(--ink2)">From</span><input id="f-df" type="date" value="${S.dateFrom}" title="Show events on or after this date">
-    <span style="font-size:12px;color:var(--ink2)">To</span><input id="f-dt" type="date" value="${S.dateTo}" title="Show events on or before this date">`:''}
-    ${['chase','all','unlisted'].includes(S.tab)?`<input id="f-s" type="text" placeholder="Search name / postcode" value="${esc(S.search)}">`:''}
+      <label class="chk"><input type="checkbox" data-src="website" ${dis?'disabled':''} ${S.listed.includes('website')?'checked':''}>Website</label>
+      <label class="chk"><input type="checkbox" data-src="goodform" ${dis?'disabled':''} ${S.listed.includes('goodform')?'checked':''}>Goodform</label>
+      <label class="chk"><input type="checkbox" data-src="swimbooker" ${dis?'disabled':''} ${S.listed.includes('swimbooker')?'checked':''}>Swimbooker</label>
+    </span>`;})()}
+    ${S.tab==='contests'?`<select id="f-st" title="Filter by contest status"><option value="">All statuses</option>
+      ${['pending','accepted','rejected'].map(s=>`<option value="${s}" ${S.status===s?'selected':''}>${s}</option>`).join('')}</select>`:''}
+    <span style="font-size:12px;color:var(--ink2)">From</span><input id="f-df" type="date" value="${S.dateFrom}" title="Show events on or after this date">
+    <span style="font-size:12px;color:var(--ink2)">To</span><input id="f-dt" type="date" value="${S.dateTo}" title="Show events on or before this date">
+    <input id="f-s" type="text" placeholder="Search name / postcode" value="${esc(S.search)}">
     <button class="small" id="f-reset" style="background:var(--muted)" title="Clear all filters">Reset filters</button>
     ${S.msg?`<span class="badge accepted">${esc(S.msg)}</span>`:''}
   </div>`;
@@ -216,14 +225,7 @@ function eventRows(list){
 }
 
 function chase(all){
-  const q=S.search.toLowerCase();
   let list=S.events.filter(e=>inScope(e) && (all || (e.records_received===0 && !contestRemoves(contestFor(e.id)))));
-  if(S.dateFrom) list=list.filter(e=>e.event_date>=S.dateFrom);
-  if(S.dateTo) list=list.filter(e=>e.event_date<=S.dateTo);
-  if(S.listed.length){
-    list=list.filter(e=>S.listed.some(s=>({website:e.in_website,goodform:e.in_goodform,swimbooker:e.in_swimbooker})[s]));
-  }
-  if(q) list=list.filter(e=>(e.event_name+' '+(e.postcode||'')).toLowerCase().includes(q));
   return shell(`<div class="card"><h2>${all?'All expected events':'Chase list: expected events with no data received'}</h2>
     <div class="count">${fmt(list.length)} events${all?'':' to chase'}. Contest an event if it was cancelled, misnamed, in the wrong region, a duplicate, not EDP delivery, or its data went elsewhere.</div>
     <div class="scroll"><table><tr><th>Date</th><th>Event</th><th>Region</th><th>Postcode</th><th>Listed in</th><th>Data</th><th>Action</th></tr>
@@ -247,7 +249,13 @@ function unlisted(){
 
 function contests(){
   const admin=S.profile?.role==='admin';
-  const list=S.contests.filter(c=>!S.region||c.expected_events?.region_code===S.region);
+  const list=S.contests.filter(c=>{const e=c.expected_events||{};
+    return (!S.region||e.region_code===S.region)
+      && (!S.fy||e.fy===S.fy) && (!S.q||e.fy_quarter===S.q)
+      && (!S.dateFrom||(e.event_date||'')>=S.dateFrom) && (!S.dateTo||(e.event_date||'')<=S.dateTo)
+      && srcMatch(e)
+      && (!S.status||c.status===S.status)
+      && (!S.search||((e.event_name||'')+' '+(e.postcode||'')+' '+(c.comment||'')).toLowerCase().includes(S.search.toLowerCase()));});
   return shell(`<div class="card"><h2>Contests${admin?' and approvals':''}</h2>
     <div class="count">${fmt(list.length)} contests. ${admin?'Pending contests need your accept or reject decision; accepted cancellations, duplicates and not-EDP contests adjust the KPI.':'An admin reviews each contest; accepted ones adjust the KPI.'}</div>
     <div class="scroll"><table><tr><th>Raised</th><th>Event</th><th>Region</th><th>Type</th><th>Comment</th><th>Status</th>${admin?'<th>Decide</th>':''}</tr>
@@ -311,11 +319,11 @@ function render(){
 function wire(){
   document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;S.search='';render();});
   const f=(id,key)=>{const el=$(id); if(el) el.onchange=()=>{S[key]=el.value;render();};};
-  f('f-fy','fy'); f('f-q','q'); f('f-r','region'); f('f-df','dateFrom'); f('f-dt','dateTo');
+  f('f-fy','fy'); f('f-q','q'); f('f-r','region'); f('f-df','dateFrom'); f('f-dt','dateTo'); f('f-st','status');
   document.querySelectorAll('[data-src]').forEach(cb=>cb.onchange=()=>{
     S.listed=[...document.querySelectorAll('[data-src]:checked')].map(x=>x.dataset.src); render();});
   const rst=$('f-reset'); if(rst) rst.onclick=()=>{
-    S.fy='';S.q='';S.region='';S.listed=[];S.dateFrom='';S.dateTo='';S.search='';render();};
+    S.fy='';S.q='';S.region='';S.listed=[];S.dateFrom='';S.dateTo='';S.search='';S.status='';render();};
   const s=$('f-s'); if(s){ s.oninput=()=>{S.search=s.value;render();const n=$('f-s');n.focus();n.setSelectionRange(n.value.length,n.value.length);}; }
   const out=$('out'); if(out) out.onclick=async()=>{await sb.auth.signOut();location.reload();};
   const ch=$('chpw'); if(ch) ch.onclick=()=>{S.modal=pwModal();render();};
@@ -327,13 +335,13 @@ function wire(){
     const {error}=await sb.from('contests').insert({event_id:ms.dataset.eid,contest_type:$('c-type').value,
       comment:$('c-comment').value||null,created_by:S.user.id});
     S.modal=null; S.msg=error?('Contest failed: '+error.message):'Contest submitted for admin review';
-    if(!error) S.contests=await fetchAll('contests','*, expected_events(event_name,event_date,region_code)',{col:'created_at',asc:false});
+    if(!error) S.contests=await fetchAll('contests','*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,postcode)',{col:'created_at',asc:false});
     render(); setTimeout(()=>{S.msg='';render();},4000);};
   const ds=$('d-save'); if(ds) ds.onclick=async()=>{
     const {error}=await sb.from('contests').update({status:ds.dataset.dec,decided_by:S.user.id,
       decided_at:new Date().toISOString(),decision_note:$('d-note').value||null}).eq('id',ds.dataset.id);
     S.modal=null; S.msg=error?('Decision failed: '+error.message):('Contest '+ds.dataset.dec);
-    if(!error) S.contests=await fetchAll('contests','*, expected_events(event_name,event_date,region_code)',{col:'created_at',asc:false});
+    if(!error) S.contests=await fetchAll('contests','*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,postcode)',{col:'created_at',asc:false});
     render(); setTimeout(()=>{S.msg='';render();},4000);};
   const ps=$('pw-save'); if(ps) ps.onclick=async()=>{
     const a=$('pw1').value,b=$('pw2').value;
