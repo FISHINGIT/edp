@@ -182,7 +182,7 @@ function filtersRow(){
       <span style="font-size:12px;color:var(--ink2)">Listed in:</span>
       <label class="chk"><input type="checkbox" data-src="website" ${dis?'disabled':''} ${S.listed.includes('website')?'checked':''}>Website</label>
       <label class="chk"><input type="checkbox" data-src="goodform" ${dis?'disabled':''} ${S.listed.includes('goodform')?'checked':''}>Goodform</label>
-      <label class="chk"><input type="checkbox" data-src="swimbooker" ${dis?'disabled':''} ${S.listed.includes('swimbooker')?'checked':''}>Swimbooker</label>
+      <label class="chk"><input type="checkbox" data-src="swimbooker" ${dis?'disabled':''} ${S.listed.includes('swimbooker')?'checked':''}>Event Marketplace</label>
     </span>`;})()}
     ${S.tab==='contests'?`<select id="f-st" title="Filter by contest status"><option value="">All statuses</option>
       ${['pending','accepted','rejected'].map(s=>`<option value="${s}" ${S.status===s?'selected':''}>${s}</option>`).join('')}</select>`:''}
@@ -221,7 +221,7 @@ function eventRows(list){
     const c=contestFor(e.id);
     return `<tr><td>${dt(e.event_date)}</td><td>${esc(e.event_name)}</td><td>${esc(e.region_code)}</td>
     <td>${esc(e.postcode||'')}</td>
-    <td>${['in_website','in_goodform','in_swimbooker'].filter(k=>e[k]).map(k=>`<span class="badge src">${k.slice(3,5)==='we'?'web':k.slice(3)}</span>`).join(' ')}</td>
+    <td>${['in_website','in_goodform','in_swimbooker'].filter(k=>e[k]).map(k=>`<span class="badge src">${k==='in_website'?'web':k==='in_swimbooker'?'marketplace':k.slice(3)}</span>`).join(' ')}</td>
     <td>${e.records_received>0?`<span class="badge received">${fmt(e.records_received)} records</span>`:(contestReceived(e.id)?'<span class="badge received">matched to unlisted data</span>':'<span class="badge nodata">no data</span>')}</td>
     <td>${c?`<span class="badge ${c.status}">${c.contest_type.replaceAll('_',' ')}: ${c.status}</span>`:`<button class="small" data-contest="${e.id}">Contest</button>`}</td></tr>`;
   }).join('');
@@ -244,7 +244,7 @@ function unlisted(){
   if(S.dateTo) list=list.filter(u=>u.event_date<=S.dateTo);
   if(q) list=list.filter(u=>(u.event_name+' '+(u.postcode||'')+' '+(u.venue||'')).toLowerCase().includes(q));
   return shell(`<div class="card"><h2>Unlisted actuals: data received for events in no expected list</h2>
-    <div class="count">${fmt(list.length)} events. These ran and returned data but were never published on the website, swimbooker or Goodform.</div>
+    <div class="count">${fmt(list.length)} events. These ran and returned data but were never published on the website, the Event Marketplace or Goodform.</div>
     <div class="scroll"><table><tr><th>Date</th><th>Event</th><th>Venue</th><th>Region</th><th>Postcode</th><th>Records</th><th>Source file</th><th>Action</th></tr>
     ${list.map(u=>{const mc=S.contests.filter(c=>c.unlisted_event_id===u.id).sort((a,b)=>b.created_at>a.created_at?1:-1)[0];
       return `<tr><td>${dt(u.event_date)}</td><td>${esc(u.event_name)}</td><td>${esc(u.venue||'')}</td><td>${esc(u.region_code||'')}</td><td>${esc(u.postcode||'')}</td><td>${fmt(u.records_received)}</td><td style="font-size:11.5px;color:var(--muted)">${esc((u.source_file||'').slice(0,90))}</td>
