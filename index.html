@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDP Data Chase - v.10</title>
+<title>EDP Data Chase - v.11</title>
 <style>
 :root{--teal:#1F4E5F;--teal-mid:#2E7D9C;--teal-light:#E8F0F3;--ink:#1a1a1a;--ink2:#555;--muted:#8a8a8a;
 --bg:#f5f7f8;--card:#ffffff;--line:#e3e8ea;--good:#2E7D32;--warn:#B26A00;--bad:#C62828;--radius:10px}
@@ -153,7 +153,7 @@ function kpiByRegion(){
 
 /* ---------- views ---------- */
 function loginView(err){
-  return `<div class="login-box"><h1>EDP Data Chase - v.10</h1>
+  return `<div class="login-box"><h1>EDP Data Chase - v.11</h1>
   <p>Angling Trust internal dashboard. Sign in with your work login.</p>
   ${err?`<div class="err">${esc(err)}</div>`:''}
   <input id="em" type="email" placeholder="Email" autocomplete="username">
@@ -164,7 +164,7 @@ function loginView(err){
 
 function shell(inner){
   const admin = S.profile?.role==='admin';
-  return `<header><h1>EDP Data Chase - v.10</h1>
+  return `<header><h1>EDP Data Chase - v.11</h1>
     <span class="who">${esc(S.profile?.display_name||S.user.email)} ${admin?'<span class="badge accepted">admin</span>':''}</span>
     <button class="ghost small" id="chpw">Change password</button>
     <button class="ghost small" id="out">Sign out</button></header>
@@ -265,9 +265,11 @@ function unlisted(){
     <div class="scroll"><table><tr>${th('Date','date')}${th('Event','event')}${th('Venue','venue')}${th('Region','region')}${th('Postcode','postcode')}${th('Records','records')}${th('Source file','source')}${th('Action','action')}</tr>
     ${sortBy(list,{date:u=>u.event_date,event:u=>(u.event_name||'').toLowerCase(),venue:u=>(u.venue||'').toLowerCase(),region:u=>u.region_code||'',
       postcode:u=>u.postcode||'',records:u=>u.records_received,source:u=>(u.source_file||'').toLowerCase(),
-      action:u=>{const mc=S.contests.filter(c=>c.unlisted_event_id===u.id&&c.status!=='rejected')[0];return mc?mc.contest_type+mc.status:'';}}).map(u=>{const mc=S.contests.filter(c=>c.unlisted_event_id===u.id).sort((a,b)=>b.created_at>a.created_at?1:-1)[0];
+      action:u=>{const mc=S.contests.filter(c=>c.unlisted_event_id===u.id&&c.status!=='rejected')[0];return mc?mc.contest_type+mc.status:'';}}).map(u=>{const mc=S.contests.filter(c=>c.unlisted_event_id===u.id&&c.status!=='rejected')[0]||S.contests.filter(c=>c.unlisted_event_id===u.id)[0];
+      const heads=S.contests.filter(c=>c.duplicate_of_unlisted_id===u.id&&c.contest_type==='unlisted_duplicate'&&c.status!=='rejected');
+      const headBadge=heads.length?`<span class="badge src" title="${esc(heads.map(h=>(h.un?.event_name||'')+' ('+h.status+')').join('; '))}">head of ${heads.length} duplicate${heads.length>1?'s':''}</span> `:'';
       return `<tr><td>${dt(u.event_date)}</td><td>${esc(u.event_name)}</td><td>${esc(u.venue||'')}</td><td>${esc(u.region_code||'')}</td><td>${esc(u.postcode||'')}</td><td>${fmt(u.records_received)}</td><td style="font-size:11.5px;color:var(--muted)">${esc((u.source_file||'').slice(0,90))}</td>
-      <td>${mc&&mc.status!=='rejected'?`<span class="badge ${mc.status}" title="${esc(mc.contest_type==='unlisted_duplicate'?('duplicate of: '+(mc.dup?.event_name||'')):(mc.expected_events?.event_name||''))}">${mc.contest_type==='unlisted_duplicate'?'duplicate':'matched'}: ${mc.status}</span>`:`<button class="small" data-match="${u.id}">Match</button>`}</td></tr>`;}).join('')}
+      <td>${headBadge}${mc&&mc.status!=='rejected'?`<span class="badge ${mc.status}" title="${esc(mc.contest_type==='unlisted_duplicate'?('duplicate of: '+(mc.dup?.event_name||'')):(mc.expected_events?.event_name||''))}">${mc.contest_type==='unlisted_duplicate'?'duplicate':'matched'}: ${mc.status}</span>`:`<button class="small" data-match="${u.id}">Match</button>`}</td></tr>`;}).join('')}
     </table></div></div>`);
 }
 
@@ -327,7 +329,8 @@ function matchModal(u){
   if(q) evs=evs.filter(e=>(e.event_name+' '+(e.postcode||'')).toLowerCase().includes(q));
   evs.sort((a,b)=>((hasData(a)?1:0)-(hasData(b)?1:0)) || near(a.event_date,b.event_date));
   const evTop=evs.slice(0,25);
-  let uns=S.unlisted.filter(x=>x.id!==u.id && inReg(x.region_code));
+  const taken=new Set(S.contests.filter(c=>c.unlisted_event_id&&c.status!=='rejected').map(c=>c.unlisted_event_id));
+  let uns=S.unlisted.filter(x=>x.id!==u.id && !taken.has(x.id) && inReg(x.region_code));
   if(q) uns=uns.filter(x=>(x.event_name+' '+(x.postcode||'')+' '+(x.venue||'')).toLowerCase().includes(q));
   uns.sort((a,b)=>near(a.event_date,b.event_date));
   const unTop=uns.slice(0,15);
@@ -345,7 +348,7 @@ function matchModal(u){
         <td><button class="small" data-pick="${e.id}">Select</button></td></tr>`).join('')}
       ${evTop.length?'':'<tr><td colspan="5" class="note">No expected events found; this event may never have been listed. Try Option 2 below, the search box, or include other regions.</td></tr>'}
     </table></div>
-    <label style="margin-top:12px"><b>Option 2:</b> this is a duplicate of another unlisted event (same event, two data sources)</label>
+    <label style="margin-top:12px"><b>Option 2:</b> this is a duplicate of another unlisted event (same event, more than one data row, e.g. AM and PM sessions). The selected event becomes the head of the group; flag further sessions against the same head.</label>
     <div class="scroll" style="max-height:160px"><table>
       <tr><th>Date</th><th>Event</th><th>Region</th><th>Records</th><th></th></tr>
       ${unTop.map(x=>`<tr><td>${dt(x.event_date)}</td><td>${esc(x.event_name)}</td><td>${esc(x.region_code||'')}</td><td>${fmt(x.records_received)}</td>
