@@ -83,7 +83,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 const sb = window.supabase.createClient('https://ztstiaxffvrxwkucpwmz.supabase.co',
  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0c3RpYXhmZnZyeHdrdWNwd216Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzNTUxNzMsImV4cCI6MjEwMTkzMTE3M30._92THYsNcAy5Cy46cKWR8EVUq0K2rgoGG8frhUePAeI');
 
-const CONTEST_SEL = '*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,postcode)';
+const CONTEST_SEL = '*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,postcode), un:unlisted_events!contests_unlisted_event_id_fkey(event_name,event_date,region_code,records_received), dup:unlisted_events!contests_duplicate_of_unlisted_id_fkey(event_name,event_date,region_code,records_received)';
 const S = { user:null, profile:null, events:[], unlisted:[], contests:[], regions:[],
             tab:'overview', fy:'', q:'', region:'', listed:[], dateFrom:'', dateTo:'', search:'', status:'', modal:null, msg:'' };
 const $ = (id)=>document.getElementById(id);
@@ -248,24 +248,28 @@ function unlisted(){
     <div class="scroll"><table><tr><th>Date</th><th>Event</th><th>Venue</th><th>Region</th><th>Postcode</th><th>Records</th><th>Source file</th><th>Action</th></tr>
     ${list.map(u=>{const mc=S.contests.filter(c=>c.unlisted_event_id===u.id).sort((a,b)=>b.created_at>a.created_at?1:-1)[0];
       return `<tr><td>${dt(u.event_date)}</td><td>${esc(u.event_name)}</td><td>${esc(u.venue||'')}</td><td>${esc(u.region_code||'')}</td><td>${esc(u.postcode||'')}</td><td>${fmt(u.records_received)}</td><td style="font-size:11.5px;color:var(--muted)">${esc((u.source_file||'').slice(0,90))}</td>
-      <td>${mc&&mc.status!=='rejected'?`<span class="badge ${mc.status}" title="${esc(mc.expected_events?.event_name||'')}">matched: ${mc.status}</span>`:`<button class="small" data-match="${u.id}">Match</button>`}</td></tr>`;}).join('')}
+      <td>${mc&&mc.status!=='rejected'?`<span class="badge ${mc.status}" title="${esc(mc.contest_type==='unlisted_duplicate'?('duplicate of: '+(mc.dup?.event_name||'')):(mc.expected_events?.event_name||''))}">${mc.contest_type==='unlisted_duplicate'?'duplicate':'matched'}: ${mc.status}</span>`:`<button class="small" data-match="${u.id}">Match</button>`}</td></tr>`;}).join('')}
     </table></div></div>`);
 }
 
 function contests(){
   const admin=S.profile?.role==='admin';
-  const list=S.contests.filter(c=>{const e=c.expected_events||{};
-    return (!S.region||e.region_code===S.region)
-      && (!S.fy||e.fy===S.fy) && (!S.q||e.fy_quarter===S.q)
-      && (!S.dateFrom||(e.event_date||'')>=S.dateFrom) && (!S.dateTo||(e.event_date||'')<=S.dateTo)
-      && srcMatch(e)
+  const list=S.contests.filter(c=>{const e=c.expected_events||{}; const un=c.un||{};
+    const rdate=e.event_date||un.event_date||''; const rregion=e.region_code||un.region_code;
+    const rfy=e.fy||(un.event_date?fyOf(un.event_date):''); const rq=e.fy_quarter||(un.event_date?qOf(un.event_date):'');
+    return (!S.region||rregion===S.region)
+      && (!S.fy||rfy===S.fy) && (!S.q||rq===S.q)
+      && (!S.dateFrom||rdate>=S.dateFrom) && (!S.dateTo||rdate<=S.dateTo)
+      && (!c.expected_events||srcMatch(e))
       && (!S.status||c.status===S.status)
-      && (!S.search||((e.event_name||'')+' '+(e.postcode||'')+' '+(c.comment||'')).toLowerCase().includes(S.search.toLowerCase()));});
+      && (!S.search||((e.event_name||'')+' '+(un.event_name||'')+' '+(e.postcode||'')+' '+(c.comment||'')).toLowerCase().includes(S.search.toLowerCase()));});
   return shell(`<div class="card"><h2>Contests${admin?' and approvals':''}</h2>
     <div class="count">${fmt(list.length)} contests. ${admin?'Pending contests need your accept or reject decision; accepted cancellations, duplicates and not-EDP contests remove events from the KPI; accepted matches to unlisted data (and data submitted elsewhere) count the event as received.':'An admin reviews each contest; accepted ones adjust the KPI.'}</div>
     <div class="scroll"><table><tr><th>Raised</th><th>Event</th><th>Region</th><th>Type</th><th>Comment</th><th>Status</th>${admin?'<th>Decide</th>':''}</tr>
-    ${list.map(c=>`<tr><td>${dt(c.created_at)}</td><td>${esc(c.expected_events?.event_name||c.event_id)} (${dt(c.expected_events?.event_date)})</td>
-      <td>${esc(c.expected_events?.region_code||'')}</td><td>${esc(c.contest_type.replaceAll('_',' '))}</td>
+    ${list.map(c=>`<tr><td>${dt(c.created_at)}</td><td>${c.contest_type==='unlisted_duplicate'
+        ?`${esc(c.un?.event_name||'')} (${dt(c.un?.event_date)}) <span class="note">= duplicate of</span> ${esc(c.dup?.event_name||'')} (${dt(c.dup?.event_date)})`
+        :`${esc(c.expected_events?.event_name||c.event_id)} (${dt(c.expected_events?.event_date)})`}</td>
+      <td>${esc(c.expected_events?.region_code||c.un?.region_code||'')}</td><td>${esc(c.contest_type.replaceAll('_',' '))}</td>
       <td>${esc(c.comment||'')}${c.decision_note?`<div class="note">Decision: ${esc(c.decision_note)}</div>`:''}</td>
       <td><span class="badge ${c.status}">${c.status}</span></td>
       ${admin?`<td>${c.status==='pending'?`<button class="small ok" data-dec="accepted" data-id="${c.id}">Accept</button> <button class="small no" data-dec="rejected" data-id="${c.id}">Reject</button>`:''}</td>`:''}</tr>`).join('')}
@@ -295,25 +299,38 @@ function contestModal(e){
 }
 function matchModal(u){
   const q=(S.matchQ||'').toLowerCase();
-  let cands=S.events.filter(e=>e.status==='expected' && !e.excluded && !hasData(e) && !contestRemoves(contestFor(e.id)));
-  if(!S.matchAll) cands=cands.filter(e=>!u.region_code||u.region_code==='UNKNOWN'||e.region_code===u.region_code);
-  if(q) cands=cands.filter(e=>(e.event_name+' '+(e.postcode||'')).toLowerCase().includes(q));
+  const inReg=(rc)=>S.matchAll||!u.region_code||u.region_code==='UNKNOWN'||rc===u.region_code;
   const ud=new Date(u.event_date).getTime();
-  cands.sort((a,b)=>Math.abs(new Date(a.event_date)-ud)-Math.abs(new Date(b.event_date)-ud));
-  const top=cands.slice(0,40);
-  return `<div class="modal-bg" id="mbg"><div class="modal" style="max-width:720px">
-    <h3>Match unlisted data to an expected event</h3>
+  const near=(da,db)=>Math.abs(new Date(da)-ud)-Math.abs(new Date(db)-ud);
+  let evs=S.events.filter(e=>e.status==='expected' && !e.excluded && !contestRemoves(contestFor(e.id)) && inReg(e.region_code));
+  if(q) evs=evs.filter(e=>(e.event_name+' '+(e.postcode||'')).toLowerCase().includes(q));
+  evs.sort((a,b)=>((hasData(a)?1:0)-(hasData(b)?1:0)) || near(a.event_date,b.event_date));
+  const evTop=evs.slice(0,25);
+  let uns=S.unlisted.filter(x=>x.id!==u.id && inReg(x.region_code));
+  if(q) uns=uns.filter(x=>(x.event_name+' '+(x.postcode||'')+' '+(x.venue||'')).toLowerCase().includes(q));
+  uns.sort((a,b)=>near(a.event_date,b.event_date));
+  const unTop=uns.slice(0,15);
+  return `<div class="modal-bg" id="mbg"><div class="modal" style="max-width:760px">
+    <h3>Match unlisted data</h3>
     <div style="font-size:13px"><b>Unlisted:</b> ${esc(u.event_name)}<br><span class="note">${dt(u.event_date)} | ${esc(u.region_code||'')} | ${esc(u.venue||'')} | ${esc(u.postcode||'no postcode')} | ${fmt(u.records_received)} records</span></div>
-    <label>Find the expected (chase list) event this data belongs to</label>
-    <input id="mt-q" type="text" placeholder="Search name / postcode" value="${esc(S.matchQ||'')}">
-    <label class="chk" style="margin-top:6px"><input type="checkbox" id="mt-all" ${S.matchAll?'checked':''}>Include other regions</label>
-    <div class="scroll" style="max-height:260px;margin-top:8px"><table>
-      <tr><th>Date</th><th>Event</th><th>Region</th><th>Postcode</th><th></th></tr>
-      ${top.map(e=>`<tr><td>${dt(e.event_date)}</td><td>${esc(e.event_name)}</td><td>${esc(e.region_code)}</td><td>${esc(e.postcode||'')}</td>
+    <label>Search (name / postcode / venue)</label>
+    <input id="mt-q" type="text" value="${esc(S.matchQ||'')}">
+    <label class="chk" style="display:inline-flex;align-items:center;gap:6px;margin:8px 0 0;width:auto"><input type="checkbox" id="mt-all" ${S.matchAll?'checked':''}>Include other regions</label>
+    <label style="margin-top:12px"><b>Option 1:</b> this data belongs to an expected (chase list) event</label>
+    <div class="scroll" style="max-height:190px"><table>
+      <tr><th>Date</th><th>Event</th><th>Region</th><th>Data</th><th></th></tr>
+      ${evTop.map(e=>`<tr><td>${dt(e.event_date)}</td><td>${esc(e.event_name)}</td><td>${esc(e.region_code)}</td>
+        <td>${hasData(e)?`<span class="badge received">${e.records_received>0?fmt(e.records_received)+' records':'matched'}</span>`:'<span class="badge nodata">no data</span>'}</td>
         <td><button class="small" data-pick="${e.id}">Select</button></td></tr>`).join('')}
-      ${top.length?'':'<tr><td colspan="5" class="note">No unmatched expected events found. Try the search box or include other regions.</td></tr>'}
+      ${evTop.length?'':'<tr><td colspan="5" class="note">No expected events found; this event may never have been listed. Try Option 2 below, the search box, or include other regions.</td></tr>'}
     </table></div>
-    <div class="note">${cands.length>40?`Showing the 40 nearest by date of ${cands.length}; refine with the search box.`:`${cands.length} candidate${cands.length===1?'':'s'}, nearest by date first.`}</div>
+    <label style="margin-top:12px"><b>Option 2:</b> this is a duplicate of another unlisted event (same event, two data sources)</label>
+    <div class="scroll" style="max-height:160px"><table>
+      <tr><th>Date</th><th>Event</th><th>Region</th><th>Records</th><th></th></tr>
+      ${unTop.map(x=>`<tr><td>${dt(x.event_date)}</td><td>${esc(x.event_name)}</td><td>${esc(x.region_code||'')}</td><td>${fmt(x.records_received)}</td>
+        <td><button class="small" data-pickdup="${x.id}">Select</button></td></tr>`).join('')}
+      ${unTop.length?'':'<tr><td colspan="5" class="note">No other unlisted events found with this search.</td></tr>'}
+    </table></div>
     <label>Comment (evidence for the match)</label>
     <textarea id="mt-comment" rows="2">${esc(S.matchComment||'')}</textarea>
     <div class="row"><button class="ghost" style="color:var(--ink2);border-color:var(--line)" id="m-cancel">Cancel</button></div>
@@ -369,6 +386,16 @@ function wire(){
     S.modal=matchModal(S.unlisted.find(x=>x.id===S.matchFor)); render(); const n=$('mt-q'); n.focus(); n.setSelectionRange(n.value.length,n.value.length);}; }
   const ma=$('mt-all'); if(ma){ ma.onchange=()=>{S.matchAll=ma.checked; S.matchComment=$('mt-comment').value;
     S.modal=matchModal(S.unlisted.find(x=>x.id===S.matchFor)); render();}; }
+  document.querySelectorAll('[data-pickdup]').forEach(b=>b.onclick=async()=>{
+    const u=S.unlisted.find(x=>x.id===S.matchFor); const d=S.unlisted.find(x=>x.id===b.dataset.pickdup);
+    const comment=($('mt-comment').value||'').trim();
+    const auto=`Unlisted duplicate: "${u.event_name}" ${dt(u.event_date)} (${u.records_received} records, ${u.source_file||''}) is the same event as "${d.event_name}" ${dt(d.event_date)} (${d.records_received} records, ${d.source_file||''}).`;
+    const {error}=await sb.from('contests').insert({contest_type:'unlisted_duplicate',
+      comment:comment?auto+' '+comment:auto,created_by:S.user.id,unlisted_event_id:u.id,duplicate_of_unlisted_id:d.id});
+    S.modal=null; S.matchFor=null; S.matchQ=''; S.matchAll=false; S.matchComment='';
+    S.msg=error?('Duplicate flag failed: '+error.message):'Duplicate flagged for admin review';
+    if(!error) S.contests=await fetchAll('contests',CONTEST_SEL,{col:'created_at',asc:false});
+    render(); setTimeout(()=>{S.msg='';render();},4000);});
   document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=async()=>{
     const u=S.unlisted.find(x=>x.id===S.matchFor); const e=S.events.find(x=>x.id===b.dataset.pick);
     const comment=($('mt-comment').value||'').trim();
