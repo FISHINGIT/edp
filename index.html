@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDP Data Chase</title>
+<title>EDP Data Chase - v.9</title>
 <style>
 :root{--teal:#1F4E5F;--teal-mid:#2E7D9C;--teal-light:#E8F0F3;--ink:#1a1a1a;--ink2:#555;--muted:#8a8a8a;
 --bg:#f5f7f8;--card:#ffffff;--line:#e3e8ea;--good:#2E7D32;--warn:#B26A00;--bad:#C62828;--radius:10px}
@@ -142,7 +142,7 @@ function kpiByRegion(){
 
 /* ---------- views ---------- */
 function loginView(err){
-  return `<div class="login-box"><h1>EDP Data Chase</h1>
+  return `<div class="login-box"><h1>EDP Data Chase - v.9</h1>
   <p>Angling Trust internal dashboard. Sign in with your work login.</p>
   ${err?`<div class="err">${esc(err)}</div>`:''}
   <input id="em" type="email" placeholder="Email" autocomplete="username">
@@ -153,7 +153,7 @@ function loginView(err){
 
 function shell(inner){
   const admin = S.profile?.role==='admin';
-  return `<header><h1>EDP Data Chase</h1>
+  return `<header><h1>EDP Data Chase - v.9</h1>
     <span class="who">${esc(S.profile?.display_name||S.user.email)} ${admin?'<span class="badge accepted">admin</span>':''}</span>
     <button class="ghost small" id="chpw">Change password</button>
     <button class="ghost small" id="out">Sign out</button></header>
