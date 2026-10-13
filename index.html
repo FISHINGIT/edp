@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDP Data Chase - v.11</title>
+<title>Event Delivery Partner - Data Queries - v.12</title>
 <style>
 :root{--teal:#1F4E5F;--teal-mid:#2E7D9C;--teal-light:#E8F0F3;--ink:#1a1a1a;--ink2:#555;--muted:#8a8a8a;
 --bg:#f5f7f8;--card:#ffffff;--line:#e3e8ea;--good:#2E7D32;--warn:#B26A00;--bad:#C62828;--radius:10px}
@@ -153,7 +153,7 @@ function kpiByRegion(){
 
 /* ---------- views ---------- */
 function loginView(err){
-  return `<div class="login-box"><h1>EDP Data Chase - v.11</h1>
+  return `<div class="login-box"><h1>Event Delivery Partner - Data Queries - v.12</h1>
   <p>Angling Trust internal dashboard. Sign in with your work login.</p>
   ${err?`<div class="err">${esc(err)}</div>`:''}
   <input id="em" type="email" placeholder="Email" autocomplete="username">
@@ -164,7 +164,7 @@ function loginView(err){
 
 function shell(inner){
   const admin = S.profile?.role==='admin';
-  return `<header><h1>EDP Data Chase - v.11</h1>
+  return `<header><h1>Event Delivery Partner - Data Queries - v.12</h1>
     <span class="who">${esc(S.profile?.display_name||S.user.email)} ${admin?'<span class="badge accepted">admin</span>':''}</span>
     <button class="ghost small" id="chpw">Change password</button>
     <button class="ghost small" id="out">Sign out</button></header>
@@ -183,7 +183,7 @@ function shell(inner){
 
 function filtersRow(){
   const fys=[...new Set(S.events.map(e=>e.fy))].sort();
-  const regs=S.regions.filter(r=>r.code!=='UNKNOWN').concat(S.regions.filter(r=>r.code==='UNKNOWN'));
+  const regs=S.regions.filter(r=>r.code!=='UNKNOWN'&&r.code!=='LN').concat(S.regions.filter(r=>r.code==='UNKNOWN'));
   return `<div class="filters">
     <select id="f-fy"><option value="">All years</option>${fys.map(f=>`<option ${S.fy===f?'selected':''}>${f}</option>`).join('')}</select>
     <select id="f-q"><option value="">All quarters</option>${['Q1','Q2','Q3','Q4'].map(q=>`<option ${S.q===q?'selected':''}>${q}</option>`).join('')}</select>
@@ -200,10 +200,10 @@ function filtersRow(){
       <option value="received" ${S.data==='received'?'selected':''}>Events with data</option></select>`:''}
     ${S.tab==='contests'?`<select id="f-st" title="Filter by contest status"><option value="">All statuses</option>
       ${['pending','accepted','rejected'].map(s=>`<option value="${s}" ${S.status===s?'selected':''}>${s}</option>`).join('')}</select>`:''}
-    <span style="font-size:12px;color:var(--ink2)">From</span><input id="f-df" type="date" value="${S.dateFrom}" title="Show events on or after this date">
-    <span style="font-size:12px;color:var(--ink2)">To</span><input id="f-dt" type="date" value="${S.dateTo}" title="Show events on or before this date">
+    <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap"><span style="font-size:12px;color:var(--ink2)">From</span><input id="f-df" type="date" value="${S.dateFrom}" title="Show events on or after this date">
+    <span style="font-size:12px;color:var(--ink2)">To</span><input id="f-dt" type="date" value="${S.dateTo}" title="Show events on or before this date"></span>
     <input id="f-s" type="text" placeholder="Search name / postcode" value="${esc(S.search)}">
-    <button class="small" id="f-reset" style="background:var(--muted)" title="Clear all filters">Reset filters</button>
+    <button class="small" id="f-reset" style="background:${(S.fy||S.q||S.region||S.listed.length||S.dateFrom||S.dateTo||S.search||S.status||S.data)?'var(--teal-mid)':'var(--muted)'}" title="Clear all filters${(S.fy||S.q||S.region||S.listed.length||S.dateFrom||S.dateTo||S.search||S.status||S.data)?' (filters are active)':''}">Reset filters</button>
     ${S.msg?`<span class="badge accepted">${esc(S.msg)}</span>`:''}
   </div>`;
 }
@@ -244,7 +244,7 @@ function eventRows(list){
 function chase(all){
   let list=S.events.filter(e=>inScope(e) && (all || (!hasData(e) && !contestRemoves(contestFor(e.id)))));
   return shell(`<div class="card"><h2>${all?'All expected events':'Chase list: expected events with no data received'}</h2>
-    <div class="count">${fmt(list.length)} events${all?'':' to chase'}. Contest an event if it was cancelled, misnamed, in the wrong region, a duplicate, not EDP delivery, or its data went elsewhere.</div>
+    <div class="count">${fmt(list.length)} events${all?'':' to chase'}. Contest an event if it was cancelled, misnamed, in the wrong region, a duplicate, not Event Delivery Partner delivery, or its data went elsewhere.</div>
     <div class="scroll"><table><tr>${th('Date','date')}${th('Event','event')}${th('Region','region')}${th('Postcode','postcode')}${th('Listed in','listed')}${th('Data','data')}${th('Action','action')}</tr>
     ${eventRows(sortBy(list,{date:e=>e.event_date,event:e=>(e.event_name||'').toLowerCase(),region:e=>e.region_code,postcode:e=>e.postcode||'',
       listed:e=>(e.in_website?4:0)+(e.in_goodform?2:0)+(e.in_swimbooker?1:0),
@@ -285,7 +285,7 @@ function contests(){
       && (!S.status||c.status===S.status)
       && (!S.search||((e.event_name||'')+' '+(un.event_name||'')+' '+(e.postcode||'')+' '+(c.comment||'')).toLowerCase().includes(S.search.toLowerCase()));});
   return shell(`<div class="card"><h2>Contests${admin?' and approvals':''}</h2>
-    <div class="count">${fmt(list.length)} contests. ${admin?'Pending contests need your accept or reject decision; accepted cancellations, duplicates and not-EDP contests remove events from the KPI; accepted matches to unlisted data (and data submitted elsewhere) count the event as received.':'An admin reviews each contest; accepted ones adjust the KPI.'}</div>
+    <div class="count">${fmt(list.length)} contests. ${admin?'Pending contests need your accept or reject decision; accepted cancellations, duplicates and not-Event-Delivery-Partner contests remove events from the KPI; accepted matches to unlisted data (and data submitted elsewhere) count the event as received.':'An admin reviews each contest; accepted ones adjust the KPI.'}</div>
     <div class="scroll"><table><tr>${th('Raised','raised')}${th('Event','event')}${th('Region','region')}${th('Type','type')}${th('Comment','comment')}${th('Status','status')}${admin?'<th>Decide</th>':''}</tr>
     ${sortBy(list,{raised:c=>c.created_at,event:c=>((c.expected_events?.event_name||c.un?.event_name||'')+'').toLowerCase(),
       region:c=>c.expected_events?.region_code||c.un?.region_code||'',type:c=>c.contest_type,
@@ -310,7 +310,7 @@ function contestModal(e){
       <option value="wrong_name">Event name is wrong</option>
       <option value="wrong_region">Listed in the wrong region</option>
       <option value="duplicate">Duplicate of another event</option>
-      <option value="not_edp_delivery">Not an EDP-delivered event</option>
+      <option value="not_edp_delivery">Not an Event Delivery Partner event</option>
       <option value="data_submitted_elsewhere">Data was submitted elsewhere (counts as received once accepted)</option>
       <option value="other">Other</option>
     </select>
