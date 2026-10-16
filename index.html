@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Event Delivery Partner - Data Queries - v.12</title>
+<title>Event Delivery Partner - Data Queries - v.13</title>
 <style>
 :root{--teal:#1F4E5F;--teal-mid:#2E7D9C;--teal-light:#E8F0F3;--ink:#1a1a1a;--ink2:#555;--muted:#8a8a8a;
 --bg:#f5f7f8;--card:#ffffff;--line:#e3e8ea;--good:#2E7D32;--warn:#B26A00;--bad:#C62828;--radius:10px}
@@ -61,6 +61,20 @@ tr:hover td{background:var(--teal-light)}
 .chk{font-size:12.5px;color:var(--ink);display:inline-flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
 .chk input{accent-color:var(--teal-mid);cursor:pointer}
 @media(max-width:700px){.bar-row{grid-template-columns:110px 1fr 70px}}
+.print-meta{display:none}
+@media print{
+  @page{size:A4 portrait;margin:12mm}
+  html,body{background:#fff!important}
+  *{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  header .who,header button,.tabs,.filters,button,.modal-bg{display:none!important}
+  main{max-width:none;padding:0}
+  .scroll{max-height:none;overflow:visible;border:none}
+  th{position:static}
+  tr:hover td{background:transparent}
+  .card,.tile{break-inside:avoid}
+  .print-meta{display:block!important;font-size:12px;color:#333;margin:2px 0 12px}
+  a{text-decoration:none;color:inherit}
+}
 </style>
 </head>
 <body>
@@ -85,7 +99,7 @@ const sb = window.supabase.createClient('https://ztstiaxffvrxwkucpwmz.supabase.c
 
 const CONTEST_SEL = '*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,postcode), un:unlisted_events!contests_unlisted_event_id_fkey(event_name,event_date,region_code,records_received), dup:unlisted_events!contests_duplicate_of_unlisted_id_fkey(event_name,event_date,region_code,records_received)';
 const S = { user:null, profile:null, events:[], unlisted:[], contests:[], regions:[],
-            tab:'overview', fy:'', q:'', region:'', listed:[], dateFrom:'', dateTo:'', search:'', status:'', data:'', sort:{}, modal:null, msg:'' };
+            tab:'overview', fy:'', q:'', region:'', listed:[], dateFrom:'', dateTo:'', search:'', status:'', data:'', srcFile:'', sort:{}, modal:null, msg:'' };
 const $ = (id)=>document.getElementById(id);
 const esc = (s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = (n)=>Number(n).toLocaleString('en-GB');
@@ -151,9 +165,22 @@ function kpiByRegion(){
   }).filter(r=>r.expected>0).sort((a,b)=>b.missing-a.missing);
 }
 
+function printMeta(){
+  const names={overview:'Overview',chase:'Chase list',all:'All events',unlisted:'Unlisted actuals',contests:'Contests'};
+  const f=[];
+  if(S.fy)f.push('FY '+S.fy); if(S.q)f.push(S.q); if(S.region)f.push(regionLabel(S.region));
+  if(S.listed.length)f.push('Listed in: '+S.listed.map(x=>x==='swimbooker'?'Event Marketplace':x==='website'?'Website':'Goodform').join(', '));
+  if(S.data)f.push(S.data==='nodata'?'Events No Data':'Events with data');
+  if(S.status)f.push('Contest status: '+S.status);
+  if(S.srcFile)f.push('Source: '+S.srcFile);
+  if(S.dateFrom)f.push('From '+dt(S.dateFrom)); if(S.dateTo)f.push('To '+dt(S.dateTo));
+  if(S.search)f.push('Search: "'+S.search+'"');
+  return `<div class="print-meta">${esc(names[S.tab]||'')} view | ${f.length?('Filters: '+f.map(esc).join('; ')):'No filters applied'} | Printed ${new Date().toLocaleDateString('en-GB')}</div>`;
+}
+
 /* ---------- views ---------- */
 function loginView(err){
-  return `<div class="login-box"><h1>Event Delivery Partner - Data Queries - v.12</h1>
+  return `<div class="login-box"><h1>Event Delivery Partner - Data Queries - v.13</h1>
   <p>Angling Trust internal dashboard. Sign in with your work login.</p>
   ${err?`<div class="err">${esc(err)}</div>`:''}
   <input id="em" type="email" placeholder="Email" autocomplete="username">
@@ -164,8 +191,9 @@ function loginView(err){
 
 function shell(inner){
   const admin = S.profile?.role==='admin';
-  return `<header><h1>Event Delivery Partner - Data Queries - v.12</h1>
+  return `<header><h1>Event Delivery Partner - Data Queries - v.13</h1>
     <span class="who">${esc(S.profile?.display_name||S.user.email)} ${admin?'<span class="badge accepted">admin</span>':''}</span>
+    <button class="ghost small" id="pdf" title="Print the current view with its filters; choose 'Save as PDF' as the printer">Save view as PDF</button>
     <button class="ghost small" id="chpw">Change password</button>
     <button class="ghost small" id="out">Sign out</button></header>
   <main>
@@ -176,6 +204,7 @@ function shell(inner){
       <button data-t="unlisted" class="${S.tab==='unlisted'?'on':''}">Unlisted actuals</button>
       <button data-t="contests" class="${S.tab==='contests'?'on':''}">Contests${admin?' (admin)':''}</button>
     </div>
+    ${printMeta()}
     ${filtersRow()}
     ${inner}
   </main>${S.modal||''}`;
@@ -195,6 +224,8 @@ function filtersRow(){
       <label class="chk"><input type="checkbox" data-src="goodform" ${dis?'disabled':''} ${S.listed.includes('goodform')?'checked':''}>Goodform</label>
       <label class="chk"><input type="checkbox" data-src="swimbooker" ${dis?'disabled':''} ${S.listed.includes('swimbooker')?'checked':''}>Event Marketplace</label>
     </span>`;})()}
+    ${S.tab==='unlisted'?(()=>{const opts=[...new Set(S.unlisted.flatMap(u=>(u.source_file||'').split(';').map(x=>x.trim()).filter(Boolean)))].sort();
+      return `<select id="f-sf" title="Filter by the file the data arrived in"><option value="">Source: all files</option>${opts.map(o=>`<option value="${esc(o)}" ${S.srcFile===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;})():''}
     ${['overview','chase','all'].includes(S.tab)?`<select id="f-d" title="Filter by data received"><option value="">Data: all events</option>
       <option value="nodata" ${S.data==='nodata'?'selected':''}>Events No Data</option>
       <option value="received" ${S.data==='received'?'selected':''}>Events with data</option></select>`:''}
@@ -203,7 +234,7 @@ function filtersRow(){
     <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap"><span style="font-size:12px;color:var(--ink2)">From</span><input id="f-df" type="date" value="${S.dateFrom}" title="Show events on or after this date">
     <span style="font-size:12px;color:var(--ink2)">To</span><input id="f-dt" type="date" value="${S.dateTo}" title="Show events on or before this date"></span>
     <input id="f-s" type="text" placeholder="Search name / postcode" value="${esc(S.search)}">
-    <button class="small" id="f-reset" style="background:${(S.fy||S.q||S.region||S.listed.length||S.dateFrom||S.dateTo||S.search||S.status||S.data)?'var(--teal-mid)':'var(--muted)'}" title="Clear all filters${(S.fy||S.q||S.region||S.listed.length||S.dateFrom||S.dateTo||S.search||S.status||S.data)?' (filters are active)':''}">Reset filters</button>
+    <button class="small" id="f-reset" style="background:${(S.fy||S.q||S.region||S.listed.length||S.dateFrom||S.dateTo||S.search||S.status||S.data||S.srcFile)?'var(--teal-mid)':'var(--muted)'}" title="Clear all filters${(S.fy||S.q||S.region||S.listed.length||S.dateFrom||S.dateTo||S.search||S.status||S.data||S.srcFile)?' (filters are active)':''}">Reset filters</button>
     ${S.msg?`<span class="badge accepted">${esc(S.msg)}</span>`:''}
   </div>`;
 }
@@ -259,6 +290,7 @@ function unlisted(){
   if(S.q) list=list.filter(u=>qOf(u.event_date)===S.q);
   if(S.dateFrom) list=list.filter(u=>u.event_date>=S.dateFrom);
   if(S.dateTo) list=list.filter(u=>u.event_date<=S.dateTo);
+  if(S.srcFile) list=list.filter(u=>(u.source_file||'').split(';').map(x=>x.trim()).includes(S.srcFile));
   if(q) list=list.filter(u=>(u.event_name+' '+(u.postcode||'')+' '+(u.venue||'')).toLowerCase().includes(q));
   return shell(`<div class="card"><h2>Unlisted actuals: data received for events in no expected list</h2>
     <div class="count">${fmt(list.length)} events. These ran and returned data but were never published on the website, the Event Marketplace or Goodform.</div>
@@ -391,7 +423,7 @@ function render(){
 function wire(){
   document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;S.search='';render();});
   const f=(id,key)=>{const el=$(id); if(el) el.onchange=()=>{S[key]=el.value;render();};};
-  f('f-fy','fy'); f('f-q','q'); f('f-r','region'); f('f-df','dateFrom'); f('f-dt','dateTo'); f('f-st','status'); f('f-d','data');
+  f('f-fy','fy'); f('f-q','q'); f('f-r','region'); f('f-df','dateFrom'); f('f-dt','dateTo'); f('f-st','status'); f('f-d','data'); f('f-sf','srcFile');
   document.querySelectorAll('th[data-sk]').forEach(h=>h.onclick=()=>{
     const cur=S.sort[S.tab];
     S.sort[S.tab]=cur&&cur.key===h.dataset.sk?{key:h.dataset.sk,dir:cur.dir==='asc'?'desc':'asc'}:{key:h.dataset.sk,dir:'asc'};
@@ -399,7 +431,15 @@ function wire(){
   document.querySelectorAll('[data-src]').forEach(cb=>cb.onchange=()=>{
     S.listed=[...document.querySelectorAll('[data-src]:checked')].map(x=>x.dataset.src); render();});
   const rst=$('f-reset'); if(rst) rst.onclick=()=>{
-    S.fy='';S.q='';S.region='';S.listed=[];S.dateFrom='';S.dateTo='';S.search='';S.status='';S.data='';S.sort={};render();};
+    S.fy='';S.q='';S.region='';S.listed=[];S.dateFrom='';S.dateTo='';S.search='';S.status='';S.data='';S.srcFile='';S.sort={};render();};
+  const pb=$('pdf'); if(pb) pb.onclick=()=>{
+    const names={overview:'Overview',chase:'Chase list',all:'All events',unlisted:'Unlisted actuals',contests:'Contests'};
+    const old=document.title;
+    document.title='Event Delivery Partner - Data Queries - '+(names[S.tab]||'')+' - '+new Date().toISOString().slice(0,10);
+    const restore=()=>{document.title=old;window.removeEventListener('afterprint',restore);};
+    window.addEventListener('afterprint',restore);
+    window.print();
+  };
   const s=$('f-s'); if(s){ s.oninput=()=>{S.search=s.value;render();const n=$('f-s');n.focus();n.setSelectionRange(n.value.length,n.value.length);}; }
   const out=$('out'); if(out) out.onclick=async()=>{await sb.auth.signOut();location.reload();};
   const ch=$('chpw'); if(ch) ch.onclick=()=>{S.modal=pwModal();render();};
