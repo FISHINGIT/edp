@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Event Delivery Partner - Data Queries - v.14</title>
+<title>Event Delivery Partner - Data Queries - v.15</title>
 <style>
 :root{--teal:#1F4E5F;--teal-mid:#2E7D9C;--teal-light:#E8F0F3;--ink:#1a1a1a;--ink2:#555;--muted:#8a8a8a;
 --bg:#f5f7f8;--card:#ffffff;--line:#e3e8ea;--good:#2E7D32;--warn:#B26A00;--bad:#C62828;--radius:10px}
@@ -97,7 +97,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 const sb = window.supabase.createClient('https://ztstiaxffvrxwkucpwmz.supabase.co',
  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0c3RpYXhmZnZyeHdrdWNwd216Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzNTUxNzMsImV4cCI6MjEwMTkzMTE3M30._92THYsNcAy5Cy46cKWR8EVUq0K2rgoGG8frhUePAeI');
 
-const CONTEST_SEL = '*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,postcode), un:unlisted_events!contests_unlisted_event_id_fkey(event_name,event_date,region_code,records_received), dup:unlisted_events!contests_duplicate_of_unlisted_id_fkey(event_name,event_date,region_code,records_received)';
+const CONTEST_SEL = '*, expected_events(event_name,event_date,region_code,fy,fy_quarter,in_website,in_goodform,in_swimbooker,in_waiver,postcode), un:unlisted_events!contests_unlisted_event_id_fkey(event_name,event_date,region_code,records_received), dup:unlisted_events!contests_duplicate_of_unlisted_id_fkey(event_name,event_date,region_code,records_received)';
 const S = { user:null, profile:null, events:[], unlisted:[], contests:[], regions:[],
             tab:'overview', fy:'', q:'', region:'', listed:[], dateFrom:'', dateTo:'', search:'', status:'', data:'', srcFile:'', estatus:'', sort:{}, modal:null, msg:'' };
 const $ = (id)=>document.getElementById(id);
@@ -118,6 +118,8 @@ async function loadData(){
   S.events  = await fetchAll('expected_events','*',{col:'event_date',asc:true});
   S.unlisted= await fetchAll('unlisted_events','*',{col:'event_date',asc:true});
   S.contests= await fetchAll('contests',CONTEST_SEL,{col:'created_at',asc:false});
+  const rl = await sb.from('refresh_log').select('batch,data_as_at').order('applied_at',{ascending:false}).limit(1);
+  S.asAt = (!rl.error && rl.data && rl.data[0]) ? rl.data[0].data_as_at : null;
 }
 
 const regionLabel = (c)=>{ const r=S.regions.find(r=>r.code===c); return r? r.label : c; };
@@ -139,7 +141,7 @@ function sortBy(list,map){
 function fyOf(d){const t=new Date(d);const y=t.getFullYear()-(t.getMonth()<3?1:0);return y+'-'+String((y+1)%100).padStart(2,'0');}
 function qOf(d){const m=new Date(d).getMonth();return 'Q'+(Math.floor(((m+9)%12)/3)+1);}
 function srcMatch(e){
-  return !S.listed.length || S.listed.some(s=>({website:e.in_website,goodform:e.in_goodform,swimbooker:e.in_swimbooker})[s]);
+  return !S.listed.length || S.listed.some(s=>({website:e.in_website,goodform:e.in_goodform,swimbooker:e.in_swimbooker,waiver:e.in_waiver})[s]);
 }
 function statusMatch(e){
   if(S.estatus==='cancelled') return e.status==='cancelled'||e.status==='cancelled_sb';
@@ -176,19 +178,19 @@ function printMeta(){
   const names={overview:'Overview',chase:'Chase list',all:'All events',unlisted:'Unlisted actuals',contests:'Contests'};
   const f=[];
   if(S.fy)f.push('FY '+S.fy); if(S.q)f.push(S.q); if(S.region)f.push(regionLabel(S.region));
-  if(S.listed.length)f.push('Listed in: '+S.listed.map(x=>x==='swimbooker'?'Event Marketplace':x==='website'?'Website':'Goodform').join(', '));
+  if(S.listed.length)f.push('Listed in: '+S.listed.map(x=>x==='swimbooker'?'Event Marketplace':x==='website'?'Website':x==='waiver'?'Waiver':'Goodform').join(', '));
   if(S.data)f.push(S.data==='nodata'?'Events No Data':'Events with data');
   if(S.estatus)f.push('Event status: '+(S.estatus==='private'?'Private':S.estatus==='active'?'Active':'Cancelled'));
   if(S.status)f.push('Contest status: '+S.status);
   if(S.srcFile)f.push('Source: '+S.srcFile);
   if(S.dateFrom)f.push('From '+dt(S.dateFrom)); if(S.dateTo)f.push('To '+dt(S.dateTo));
   if(S.search)f.push('Search: "'+S.search+'"');
-  return `<div class="print-meta">${esc(names[S.tab]||'')} view | ${f.length?('Filters: '+f.map(esc).join('; ')):'No filters applied'} | Printed ${new Date().toLocaleDateString('en-GB')}</div>`;
+  return `<div class="print-meta">${esc(names[S.tab]||'')} view | ${f.length?('Filters: '+f.map(esc).join('; ')):'No filters applied'} | ${S.asAt?('Data as at '+dt(S.asAt)+' | '):''}Printed ${new Date().toLocaleDateString('en-GB')}</div>`;
 }
 
 /* ---------- views ---------- */
 function loginView(err){
-  return `<div class="login-box"><h1>Event Delivery Partner - Data Queries - v.14</h1>
+  return `<div class="login-box"><h1>Event Delivery Partner - Data Queries - v.15</h1>
   <p>Angling Trust internal dashboard. Sign in with your work login.</p>
   ${err?`<div class="err">${esc(err)}</div>`:''}
   <input id="em" type="email" placeholder="Email" autocomplete="username">
@@ -199,7 +201,8 @@ function loginView(err){
 
 function shell(inner){
   const admin = S.profile?.role==='admin';
-  return `<header><h1>Event Delivery Partner - Data Queries - v.14</h1>
+  return `<header><h1>Event Delivery Partner - Data Queries - v.15</h1>
+    ${S.asAt?`<span class="who" title="Date of the latest data refresh">Data as at ${dt(S.asAt)}</span>`:''}
     <span class="who">${esc(S.profile?.display_name||S.user.email)} ${admin?'<span class="badge accepted">admin</span>':''}</span>
     <button class="ghost small" id="pdf" title="Print the current view with its filters; choose 'Save as PDF' as the printer">Save view as PDF</button>
     <button class="ghost small" id="chpw">Change password</button>
@@ -231,6 +234,7 @@ function filtersRow(){
       <label class="chk"><input type="checkbox" data-src="website" ${dis?'disabled':''} ${S.listed.includes('website')?'checked':''}>Website</label>
       <label class="chk"><input type="checkbox" data-src="goodform" ${dis?'disabled':''} ${S.listed.includes('goodform')?'checked':''}>Goodform</label>
       <label class="chk"><input type="checkbox" data-src="swimbooker" ${dis?'disabled':''} ${S.listed.includes('swimbooker')?'checked':''}>Event Marketplace</label>
+      <label class="chk" title="Events covered by a Rod Licence Waiver"><input type="checkbox" data-src="waiver" ${dis?'disabled':''} ${S.listed.includes('waiver')?'checked':''}>Waiver</label>
     </span>`;})()}
     ${S.tab==='unlisted'?(()=>{const opts=[...new Set(S.unlisted.flatMap(u=>(u.source_file||'').split(';').map(x=>x.trim()).filter(Boolean)))].sort();
       return `<select id="f-sf" title="Filter by the file the data arrived in"><option value="">Source: all files</option>${opts.map(o=>`<option value="${esc(o)}" ${S.srcFile===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;})():''}
@@ -278,7 +282,7 @@ function eventRows(list){
     const c=contestFor(e.id);
     return `<tr><td>${dt(e.event_date)}</td><td>${esc(e.event_name)}</td><td>${esc(e.region_code)}</td>
     <td>${esc(e.postcode||'')}</td>
-    <td>${['in_website','in_goodform','in_swimbooker'].filter(k=>e[k]).map(k=>`<span class="badge src">${k==='in_website'?'web':k==='in_swimbooker'?'marketplace':k.slice(3)}</span>`).join(' ')}</td>
+    <td>${['in_website','in_goodform','in_swimbooker','in_waiver'].filter(k=>e[k]).map(k=>`<span class="badge src">${k==='in_website'?'web':k==='in_swimbooker'?'marketplace':k.slice(3)}</span>`).join(' ')}</td>
     <td>${e.records_received>0?`<span class="badge received">${fmt(e.records_received)} records</span>`:(contestReceived(e.id)?'<span class="badge received">matched to unlisted data</span>':'<span class="badge nodata">no data</span>')}</td>
     <td>${c?`<span class="badge ${c.status}">${c.contest_type.replaceAll('_',' ')}: ${c.status}</span>`:`<button class="small" data-contest="${e.id}">Contest</button>`}</td></tr>`;
   }).join('');
@@ -290,7 +294,7 @@ function chase(all){
     <div class="count">${fmt(list.length)} events${all?'':' to chase'}. Contest an event if it was cancelled, misnamed, in the wrong region, a duplicate, not Event Delivery Partner delivery, or its data went elsewhere.</div>
     <div class="scroll"><table><tr>${th('Date','date')}${th('Event','event')}${th('Region','region')}${th('Postcode','postcode')}${th('Listed in','listed')}${th('Data','data')}${th('Action','action')}</tr>
     ${eventRows(sortBy(list,{date:e=>e.event_date,event:e=>(e.event_name||'').toLowerCase(),region:e=>e.region_code,postcode:e=>e.postcode||'',
-      listed:e=>(e.in_website?4:0)+(e.in_goodform?2:0)+(e.in_swimbooker?1:0),
+      listed:e=>(e.in_website?8:0)+(e.in_goodform?4:0)+(e.in_swimbooker?2:0)+(e.in_waiver?1:0),
       data:e=>hasData(e)?(e.records_received||0.5):-1,
       action:e=>{const c=contestFor(e.id);return c?c.contest_type+c.status:'';}}))}</table></div></div>`);
 }
